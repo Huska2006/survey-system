@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>创建问卷</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .box { border: 1px solid #ccc; padding: 20px; margin-bottom: 20px; width: 400px; border-radius: 5px; }
+    input, select { display: block; margin-bottom: 10px; padding: 5px; width: 100%; box-sizing: border-box; }
+    button { padding: 5px 15px; cursor: pointer; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h2>创建问卷</h2>
+
+  <!-- 第一部分：创建问卷基本信息 -->
+  <div id="step1" class="box">
+    <h3>第一步：基本信息</h3>
+    <input id="title" placeholder="问卷标题（必填）" />
+    <input id="desc" placeholder="问卷说明（选填）" />
+    <label><input type="checkbox" id="allowAnon" style="width:auto; display:inline;" /> 允许匿名填写</label>
+    <br><br>
+    <button onclick="createSurvey()">下一步：添加题目</button>
+  </div>
+
+  <!-- 第二部分：添加题目和发布 -->
+  <div id="step2" class="box hidden">
+    <h3>第二步：添加题目</h3>
+    <p style="color:gray; font-size: 0.9em;">目前只演示单选和文本题，你可以自己在代码里扩展</p>
+    
+    <select id="qType">
+      <option value="single">单选题</option>
+      <option value="text">文本填空题</option>
+    </select>
+    <input id="qTitle" placeholder="题目内容（如：你的性别是？）" />
+    
+    <button onclick="addQuestion()">添加这道题</button>
+    
+    <hr style="margin: 20px 0;">
+    
+    <button onclick="publishSurvey()" style="background: #4CAF50; color: white; border: none;">完成并发布问卷</button>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = '/login';
+
+    let currentSurveyId = null;
+
+    // 1. 创建问卷
+    async function createSurvey() {
+      const title = document.getElementById('title').value;
+      const description = document.getElementById('desc').value;
+      const allowAnonymous = document.getElementById('allowAnon').checked;
+
+      if (!title) return alert('请填写问卷标题');
+
+      try {
+        const res = await fetch('/surveys', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': 'Bearer ' + token 
+          },
+          body: JSON.stringify({ title, description, allowAnonymous })
+        });
+        const data = await res.json();
+        
+        if (res.status === 201) {
+          currentSurveyId = data._id;
+          // 隐藏第一步，显示第二步
+          document.getElementById('step1').classList.add('hidden');
+          document.getElementById('step2').classList.remove('hidden');
+        } else {
+          alert(data.error);
+        }
+      } catch (err) {
+        alert('网络错误');
+      }
+    }
+
+    // 2. 添加题目
+    async function addQuestion() {
+      const type = document.getElementById('qType').value;
+      const title = document.getElementById('qTitle').value;
+      
+      if (!title) return alert('请填写题目内容');
+
+      // 构造请求体。如果是单选，默认生成 A、B 两个选项
+      const body = {
+        type: type,
+        title: title,
+        required: true
+      };
+      
+      if (type === 'single') {
+        body.options = [
+          { key: 'A', label: '选项 A' },
+          { key: 'B', label: '选项 B' }
+        ];
+      }
+
+      try {
+        const res = await fetch('/surveys/' + currentSurveyId + '/questions', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            'Authorization': 'Bearer ' + token 
+          },
+          body: JSON.stringify(body)
+        });
+        
+        if (res.status === 201) {
+          alert('题目添加成功！可以继续添加下一题');
+          document.getElementById('qTitle').value = ''; // 清空输入框
+        } else {
+          const data = await res.json();
+          alert(data.error);
+        }
+      } catch (err) {
+        alert('网络错误');
+      }
+    }
+
+    // 3. 发布问卷
+    async function publishSurvey() {
+      try {
+        const res = await fetch('/surveys/' + currentSurveyId + '/publish', {
+          method: 'PUT',
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+        
+        if (data.ok) {
+          alert('问卷发布成功！即将返回列表');
+          window.location.href = '/dashboard';
+        } else {
+          alert(data.error); // 比如没有添加题目就发布，会提示报错
+        }
+      } catch (err) {
+        alert('网络错误');
+      }
+    }
+  </script>
+</body>
+</html>

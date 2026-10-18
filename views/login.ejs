@@ -1,0 +1,29 @@
+
+<!DOCTYPE html>
+<html>
+<head><title>登录</title></head>
+<body>
+  <h2>登录</h2>
+  <input id="username" placeholder="用户名" />
+  <input id="password" type="password" placeholder="密码" />
+  <button onclick="login()">登录</button>
+  <p><a href="/register">去注册</a></p>
+  <script>
+    async function login() {
+      const res = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('username').value,
+          password: document.getElementById('password').value
+        })
+      });
+      const data = await res.json();
+      if (data.token) {
+        localStorage.setItem('token', data.token); // 把 Token 存起来
+        window.location.href = '/dashboard';
+      } else alert(data.error);
+    }
+  </script>
+</body>
+</html>

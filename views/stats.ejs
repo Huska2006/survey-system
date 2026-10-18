@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head><title>统计结果</title></head>
+<body>
+  <h2>统计结果</h2>
+  <div id="content">加载中...</div>
+  <script>
+    const token = localStorage.getItem('token');
+    const surveyId = '<%= surveyId %>';
+    async function load() {
+      const res = await fetch('/stats/' + surveyId, { headers: { 'Authorization': 'Bearer ' + token } });
+      const data = await res.json();
+      let html = `<h3>总回答人数：${data.total}</h3>`;
+      data.questions.forEach(q => {
+        html += `<div style="margin-bottom:15px;"><b>${q.title} (${q.type})</b><br>`;
+        if (q.options) {
+          q.options.forEach(o => html += `<span>${o._id}: ${o.count}次 </span>`);
+        } else if (q.values) {
+          html += `<span>文本回答: ${q.values.join(', ')}</span>`;
+        }
+        html += `</div>`;
+      });
+      document.getElementById('content').innerHTML = html;
+    }
+    load();
+  </script>
+</body>
+</html>

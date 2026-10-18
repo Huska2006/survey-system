@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head><title>填写问卷</title></head>
+<body>
+  <h2 id="qTitle">加载中...</h2>
+  <div id="options"></div>
+  <button onclick="submitAnswer()">下一题</button>
+  <div id="done" style="display:none">问卷填写完成！</div>
+  <script>
+    const token = localStorage.getItem('token');
+    const slug = '<%= slug %>';
+    let currentQuestion = null;
+    let answers = [];
+
+    async function loadFirst() {
+      const res = await fetch('/fill/' + slug, { headers: { 'Authorization': 'Bearer ' + token } });
+      const data = await res.json();
+      currentQuestion = data.firstQuestion;
+      render();
+    }
+
+    function render() {
+      if (!currentQuestion) {
+        document.getElementById('done').style.display = 'block';
+        document.getElementById('qTitle').innerText = '';
+        return;
+      }
+      document.getElementById('qTitle').innerText = currentQuestion.title;
+      const optDiv = document.getElementById('options');
+      if (currentQuestion.type === 'single') {
+        optDiv.innerHTML = currentQuestion.options.map(o => `<label><input type="radio" name="q" value="${o.key}">${o.label}</label><br>`).join('');
+      } else if (currentQuestion.type === 'text') {
+        optDiv.innerHTML = `<input id="textAns" />`;
+      }
+      // 为了演示，多选和数字输入你可以自己补全，逻辑同理
+    }
+
+    async function submitAnswer() {
+      let value;
+      if (currentQuestion.type === 'single') {
+        const checked = document.querySelector('input[name="q"]:checked');
+        if (!checked) return alert('请选择');
+        value = checked.value;
+      } else if (currentQuestion.type === 'text') {
+        value = document.getElementById('textAns').value;
+      }
+
+      const res = await fetch('/fill/' + slug + '/next', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ questionId: currentQuestion._id, value, answers })
+      });
+      const data = await res.json();
+      
+      if (data.error) return alert(data.error);
+      
+      answers = data.answers; // 保存已答的题
+      
+      if (data.done) {
+        // 提交最终答卷
+        await fetch('/fill/' + slug + '/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ answers })
+        });
+        currentQuestion = null;
+      } else {
+        currentQuestion = data.nextQuestion; // 后端算出来的下一题
+      }
+      render();
+    }
+    loadFirst();
+  </script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>注册</title>
+  <style>
+    body { font-family: sans-serif; padding: 50px; }
+    input { display: block; margin-bottom: 10px; padding: 5px; width: 200px; }
+    button { padding: 5px 15px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>注册新账号</h2>
+  
+  <input id="username" placeholder="请输入用户名" />
+  <input id="password" type="password" placeholder="请输入密码" />
+  
+  <button onclick="register()">注册</button>
+  
+  <p>已有账号？ <a href="/login">去登录</a></p>
+
+  <script>
+    async function register() {
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      if (!username || !password) {
+        return alert('用户名和密码不能为空');
+      }
+
+      try {
+        const res = await fetch('/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await res.json();
+
+        // 后端返回 201 Created 表示注册成功
+        if (res.status === 201) {
+          alert('注册成功，即将跳转到登录页');
+          window.location.href = '/login';
+        } else {
+          // 比如用户名已存在
+          alert(data.error || '注册失败，请重试');
+        }
+      } catch (err) {
+        console.error(err);
+        alert('网络错误或服务器未启动');
+      }
+    }
+  </script>
+</body>
+</html>

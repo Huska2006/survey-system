@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>我的问卷</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    button { padding: 5px 10px; cursor: pointer; margin-right: 10px; }
+    ul { margin-top: 20px; padding-left: 20px; }
+    li { margin-bottom: 10px; }
+  </style>
+</head>
+<body>
+  <h2>我的问卷</h2>
+  <button onclick="location.href='/create'">创建新问卷</button>
+  <button onclick="logout()">退出登录</button>
+  
+  <div id="msg" style="color: gray; margin-top: 20px;">加载中...</div>
+  <ul id="list"></ul>
+
+  <script>
+    const token = localStorage.getItem('token');
+    
+    // 如果没有 Token，直接踢回登录页
+    if (!token) {
+      window.location.href = '/login';
+    }
+
+    async function load() {
+      try {
+        const res = await fetch('/surveys', { 
+          headers: { 'Authorization': 'Bearer ' + token } 
+        });
+        
+        if (res.status === 401) {
+          // Token 过期或失效
+          localStorage.removeItem('token');
+          window.location.href = '/login';
+          return;
+        }
+
+        const data = await res.json();
+        const listEl = document.getElementById('list');
+        const msgEl = document.getElementById('msg');
+
+        // 如果返回的是数组并且里面有数据
+        if (Array.isArray(data) && data.length > 0) {
+          msgEl.style.display = 'none';
+          listEl.innerHTML = data.map(s => `
+            <li>
+              <strong>${s.title}</strong> 
+              <span style="color: gray; font-size: 0.9em;">(状态: ${s.status})</span>
+              <br>
+              <a href="/view/stats/${s._id}">查看统计</a> | 
+              <a href="/view/fill/${s.slug}" target="_blank">打开填写链接</a>
+            </li>
+          `).join('');
+        } else {
+          // 数据为空
+          msgEl.innerText = '你还没有创建过问卷，快去点击上方按钮创建吧！';
+        }
+      } catch (err) {
+        document.getElementById('msg').innerText = '加载失败，请检查后端服务是否运行。';
+      }
+    }
+
+    function logout() { 
+      localStorage.removeItem('token'); 
+      location.href='/login'; 
+    }
+
+    load();
+  </script>
+</body>
+</html>
