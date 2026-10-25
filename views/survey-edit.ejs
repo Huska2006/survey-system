@@ -5,10 +5,12 @@
   <title>创建问卷</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
-    .box { border: 1px solid #ccc; padding: 20px; margin-bottom: 20px; width: 400px; border-radius: 5px; }
-    input, select { display: block; margin-bottom: 10px; padding: 5px; width: 100%; box-sizing: border-box; }
-    button { padding: 5px 15px; cursor: pointer; }
+    .box { border: 1px solid #ccc; padding: 20px; margin-bottom: 20px; width: 500px; border-radius: 5px; }
+    input, select { display: block; margin-bottom: 10px; padding: 8px; width: 100%; box-sizing: border-box; }
+    button { padding: 8px 15px; cursor: pointer; border-radius: 3px; border: 1px solid #ccc; background: #f9f9f9; }
+    .btn-green { background: #4CAF50; color: white; border: none; }
     .hidden { display: none; }
+    .section-title { margin-top: 0; border-bottom: 1px solid #eee; padding-bottom: 5px; }
   </style>
 </head>
 <body>
@@ -16,30 +18,40 @@
 
   <!-- 第一部分：创建问卷基本信息 -->
   <div id="step1" class="box">
-    <h3>第一步：基本信息</h3>
+    <h3 class="section-title">第一步：基本信息</h3>
     <input id="title" placeholder="问卷标题（必填）" />
     <input id="desc" placeholder="问卷说明（选填）" />
     <label><input type="checkbox" id="allowAnon" style="width:auto; display:inline;" /> 允许匿名填写</label>
     <br><br>
-    <button onclick="createSurvey()">下一步：添加题目</button>
+    <button class="btn-green" onclick="createSurvey()">下一步：添加题目</button>
   </div>
 
   <!-- 第二部分：添加题目和发布 -->
   <div id="step2" class="box hidden">
-    <h3>第二步：添加题目</h3>
-    <p style="color:gray; font-size: 0.9em;">目前只演示单选和文本题，你可以自己在代码里扩展</p>
+    <h3 class="section-title">第二步：添加题目</h3>
     
-    <select id="qType">
-      <option value="single">单选题</option>
-      <option value="text">文本填空题</option>
-    </select>
-    <input id="qTitle" placeholder="题目内容（如：你的性别是？）" />
+    <!-- 方式一：手动创建新题 -->
+    <div style="border: 1px dashed #aaa; padding: 15px; margin-bottom: 20px;">
+      <h4 style="margin-top:0;">方式一：手动创建新题</h4>
+      <select id="qType">
+        <option value="single">单选题</option>
+        <option value="text">文本填空题</option>
+      </select>
+      <input id="qTitle" placeholder="题目内容（如：你的性别是？）" />
+      <button onclick="addQuestion()">添加这道题</button>
+    </div>
+
+    <!-- 方式二：从题库中选择（第二阶段新增） -->
+    <div style="border: 1px dashed #4CAF50; padding: 15px; margin-bottom: 20px;">
+      <h4 style="margin-top:0; color: #4CAF50;">方式二：从题库中选择已有题目</h4>
+      <select id="libSelect">
+        <option value="">加载题库中...</option>
+      </select>
+      <button class="btn-green" onclick="addFromLibrary()">导入这道题</button>
+    </div>
     
-    <button onclick="addQuestion()">添加这道题</button>
-    
-    <hr style="margin: 20px 0;">
-    
-    <button onclick="publishSurvey()" style="background: #4CAF50; color: white; border: none;">完成并发布问卷</button>
+    <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+    <button class="btn-green" onclick="publishSurvey()">完成并发布问卷</button>
   </div>
 
   <script>
@@ -72,6 +84,9 @@
           // 隐藏第一步，显示第二步
           document.getElementById('step1').classList.add('hidden');
           document.getElementById('step2').classList.remove('hidden');
+          
+          // 进入第二步后，立刻加载题库下拉框
+          loadLibraryOptions();
         } else {
           alert(data.error);
         }
@@ -80,14 +95,13 @@
       }
     }
 
-    // 2. 添加题目
+    // 2. 手动添加题目
     async function addQuestion() {
       const type = document.getElementById('qType').value;
       const title = document.getElementById('qTitle').value;
       
       if (!title) return alert('请填写题目内容');
 
-      // 构造请求体。如果是单选，默认生成 A、B 两个选项
       const body = {
         type: type,
         title: title,
@@ -104,16 +118,13 @@
       try {
         const res = await fetch('/surveys/' + currentSurveyId + '/questions', {
           method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json', 
-            'Authorization': 'Bearer ' + token 
-          },
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
           body: JSON.stringify(body)
         });
         
         if (res.status === 201) {
-          alert('题目添加成功！可以继续添加下一题');
-          document.getElementById('qTitle').value = ''; // 清空输入框
+          alert('题目添加成功！可以继续添加');
+          document.getElementById('qTitle').value = ''; 
         } else {
           const data = await res.json();
           alert(data.error);
@@ -123,7 +134,64 @@
       }
     }
 
-    // 3. 发布问卷
+    // 3. 加载题库下拉列表（第二阶段新增）
+    async function loadLibraryOptions() {
+      try {
+        const res = await fetch('/library', { headers: { 'Authorization': 'Bearer ' + token } });
+        const libs = await res.json();
+        const select = document.getElementById('libSelect');
+        
+        if (libs.length === 0) {
+          select.innerHTML = '<option value="">题库为空，请先去"我的题库"页面创建</option>';
+          return;
+        }
+        
+        // 将 templateId 和 versionId 拼在一起作为 value，用 | 分隔
+        select.innerHTML = libs.map(lib => {
+          const vId = lib.currentVersionId ? lib.currentVersionId._id : '';
+          return `<option value="${lib._id}|${vId}">${lib.title} (v${lib.currentVersionId ? lib.currentVersionId.versionNumber : 1})</option>`;
+        }).join('');
+      } catch (err) {
+        console.error('加载题库失败', err);
+      }
+    }
+
+    // 4. 从题库导入题目（第二阶段新增）
+    async function addFromLibrary() {
+      const val = document.getElementById('libSelect').value;
+      if (!val) return alert('请先在题库创建题目，或选择一个题目');
+      
+      const [templateId, versionId] = val.split('|');
+      
+      // 获取下拉框当前选中的题目文本
+      const selectObj = document.getElementById('libSelect');
+      const title = selectObj.options[selectObj.selectedIndex].text;
+
+      const body = {
+        templateId: templateId,
+        versionId: versionId,
+        title: title
+      };
+
+      try {
+        const res = await fetch('/surveys/' + currentSurveyId + '/questions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify(body)
+        });
+        
+        if (res.status === 201) {
+          alert('从题库导入题目成功！');
+        } else {
+          const data = await res.json();
+          alert(data.error);
+        }
+      } catch (err) {
+        alert('网络错误');
+      }
+    }
+
+    // 5. 发布问卷
     async function publishSurvey() {
       try {
         const res = await fetch('/surveys/' + currentSurveyId + '/publish', {
@@ -136,7 +204,7 @@
           alert('问卷发布成功！即将返回列表');
           window.location.href = '/dashboard';
         } else {
-          alert(data.error); // 比如没有添加题目就发布，会提示报错
+          alert(data.error);
         }
       } catch (err) {
         alert('网络错误');

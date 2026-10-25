@@ -10,11 +10,12 @@
     li { margin-bottom: 10px; }
   </style>
 </head>
-<body>
+<body>  
   <h2>我的问卷</h2>
   <button onclick="location.href='/create'">创建新问卷</button>
+  <button onclick="location.href='/view/library'" style="background: #4CAF50; color: white;">我的题库 (题库/共享/统计)</button>
   <button onclick="logout()">退出登录</button>
-  
+
   <div id="msg" style="color: gray; margin-top: 20px;">加载中...</div>
   <ul id="list"></ul>
 

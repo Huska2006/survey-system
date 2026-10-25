@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>我的题库</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    .box { border: 1px solid #ccc; padding: 15px; margin-bottom: 20px; border-radius: 5px; }
+    input, select { margin-bottom: 10px; padding: 5px; }
+    li { margin-bottom: 15px; line-height: 1.5; border-bottom: 1px dashed #ccc; padding-bottom: 10px; }
+    .btn { cursor: pointer; padding: 3px 8px; margin-right: 5px; border-radius: 3px; border: 1px solid #ccc; }
+    .btn-primary { background: #4CAF50; color: white; border: none; }
+  </style>
+</head>
+<body>
+  <button onclick="location.href='/dashboard'">返回我的问卷</button>
+  <h2>题目题库</h2>
+
+  <!-- 创建新题 -->
+  <div class="box">
+    <h3>创建新题存入题库</h3>
+    <input id="qTitle" placeholder="题目内容 (如: 你的年龄)" style="width: 250px;" />
+    <select id="qType">
+      <option value="single">单选题</option>
+      <option value="text">文本题</option>
+    </select>
+    <button class="btn btn-primary" onclick="createLib()">保存到题库</button>
+  </div>
+
+  <!-- 题库列表 -->
+  <h3>可用题库列表</h3>
+  <div id="msg" style="color: gray;">加载中...</div>
+  <ul id="list" style="padding-left: 0; list-style-type: none;"></ul>
+
+  <!-- 跨问卷统计弹出层 -->
+  <div id="statsArea" style="display:none; border: 2px solid #4CAF50; padding: 15px; margin-top: 20px;">
+    <h3>跨问卷统计结果</h3>
+    <pre id="statsData" style="background: #f4f4f4; padding: 10px; overflow-x: auto;"></pre>
+    <button class="btn" onclick="document.getElementById('statsArea').style.display='none'">关闭</button>
+  </div>
+
+  <script>
+    const token = localStorage.getItem('token');
+    if (!token) window.location.href = '/login';
+
+    async function loadLibrary() {
+      try {
+        const res = await fetch('/library', { headers: { 'Authorization': 'Bearer ' + token } });
+        const data = await res.json();
+        
+        const listEl = document.getElementById('list');
+        const msgEl = document.getElementById('msg');
+
+        if (data.length === 0) {
+          msgEl.innerText = '题库空空如也，快去建一道题吧！';
+          return;
+        }
+        
+        msgEl.style.display = 'none';
+        listEl.innerHTML = data.map(lib => `
+          <li>
+            <b>${lib.title}</b> (当前版本: v${lib.currentVersionId ? lib.currentVersionId.versionNumber : 1})
+            <br>
+            <button class="btn" onclick="viewStats('${lib._id}')">查看全局统计</button>
+            <button class="btn" onclick="viewHistory('${lib._id}')">查看历史版本</button>
+            <button class="btn btn-primary" onclick="shareLib('${lib._id}')">共享给他人</button>
+          </li>
+        `).join('');
+      } catch (err) {
+        document.getElementById('msg').innerText = '加载失败: ' + err.message;
+      }
+    }
+
+    async function createLib() {
+      const title = document.getElementById('qTitle').value;
+      const type = document.getElementById('qType').value;
+      if (!title) return alert('请输入题目内容');
+      
+      const body = { title, type };
+      if (type === 'single') {
+        body.options = [{key:'A', label:'选项A'}, {key:'B', label:'选项B'}];
+      }
+
+      try {
+        const res = await fetch('/library', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify(body)
+        });
+        
+        const data = await res.json();
+        
+        if (res.status === 201) {
+          alert('已存入题库');
+          document.getElementById('qTitle').value = ''; // 清空输入框
+          loadLibrary();
+        } else {
+          // 把后端的真实报错打出来，方便排查
+          alert('保存失败: ' + (data.error || '未知错误'));
+        }
+      } catch (err) {
+        alert('网络错误: ' + err.message);
+      }
+    }
+
+    async function viewStats(templateId) {
+      const res = await fetch('/stats/template/' + templateId, { headers: { 'Authorization': 'Bearer ' + token } });
+      const data = await res.json();
+      document.getElementById('statsArea').style.display = 'block';
+      document.getElementById('statsData').innerText = JSON.stringify(data, null, 2);
+    }
+
+    async function viewHistory(templateId) {
+      const res = await fetch('/library/' + templateId + '/history', { headers: { 'Authorization': 'Bearer ' + token } });
+      const data = await res.json();
+      let historyText = data.map(v => `v${v.versionNumber} (父版本: ${v.parentVersionId || '无'})`).join('\n');
+      alert('版本历史: \n' + (historyText || '无历史记录'));
+    }
+
+    async function shareLib(templateId) {
+      const userId = prompt('请输入要共享给对方的 User ID (可以在数据库的 users 集合里查):');
+      if (!userId) return;
+      
+      try {
+        const res = await fetch('/library/' + templateId + '/share', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+          body: JSON.stringify({ userId })
+        });
+        
+        if (res.ok) {
+          alert('共享成功！对方登录后可以在题库看到这道题了。');
+        } else {
+          const data = await res.json();
+          alert('共享失败: ' + (data.error || '未知错误'));
+        }
+      } catch (err) {
+        alert('网络错误');
+      }
+    }
+
+    loadLibrary();
+  </script>
+</body>
+</html>
