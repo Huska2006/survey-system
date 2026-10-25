@@ -2,110 +2,102 @@ const router = require('express').Router();
 const crypto = require('crypto');
 const Survey = require('../models/Survey');
 const Question = require('../models/Question');
+const QuestionVersion = require('../models/QuestionVersion'); // 新增
 const requireAuth = require('../middleware/auth');
 const { hasCycle } = require('../services/jumpEngine');
 
-// 所有的问卷管理接口都需要登录
 router.use(requireAuth);
 
-// 1. 创建问卷
 router.post('/', async (req, res) => {
   try {
     const { title, description, allowAnonymous } = req.body;
-    
-    // 生成一个随机短链接标识，例如 "a1b2c3d4"
     const slug = crypto.randomBytes(4).toString('hex');
-    
-    const survey = await Survey.create({
-      ownerId: req.userId,
-      title,
-      description: description || '',
-      allowAnonymous: !!allowAnonymous,
-      slug,
-    });
+    const survey = await Survey.create({ ownerId: req.userId, title, description: description || '', allowAnonymous: !!allowAnonymous, slug });
     res.status(201).json(survey);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 2. 获取当前用户的问卷列表
 router.get('/', async (req, res) => {
-  // 只查当前登录用户创建的问卷
   const list = await Survey.find({ ownerId: req.userId }).sort({ createdAt: -1 });
   res.json(list);
 });
 
-// 3. 获取单份问卷详情（包含所有题目）
 router.get('/:id', async (req, res) => {
   const survey = await Survey.findById(req.params.id);
   if (!survey) return res.status(404).json({ error: '问卷不存在' });
-  
-  // 越权检查
-  if (survey.ownerId.toString() !== req.userId.toString()) {
-    return res.status(403).json({ error: '无权访问该问卷' });
-  }
-  
+  if (survey.ownerId.toString() !== req.userId.toString()) return res.status(403).json({ error: '无权访问' });
   const questions = await Question.find({ surveyId: survey._id }).sort({ order: 1 });
   res.json({ survey, questions });
 });
 
-// 4. 给问卷添加题目
+// 修改点：添加题目逻辑（拦截已发布 + 支持题库快照）
 router.post('/:id/questions', async (req, res) => {
   try {
     const survey = await Survey.findById(req.params.id);
     if (!survey) return res.status(404).json({ error: '问卷不存在' });
-    if (survey.ownerId.toString() !== req.userId.toString()) {
-      return res.status(403).json({ error: '无权访问' });
+    if (survey.ownerId.toString() !== req.userId.toString()) return res.status(403).json({ error: '无权访问' });
+
+    // 第二阶段新增：需求三（已发布问卷里的题目不能被修改）
+    if (survey.status === 'published') {
+      return res.status(400).json({ error: '问卷已发布，为保证数据一致，不能直接修改题目' });
     }
 
-    // 自动计算新题目的顺序（排在最后面）
+    let questionData = { ...req.body, surveyId: survey._id };
+
+    // 第二阶段新增：如果是从题库选择的题目
+    if (req.body.templateId && req.body.versionId) {
+      const version = await QuestionVersion.findById(req.body.versionId);
+      if (!version) return res.status(404).json({ error: '题库版本不存在' });
+      
+      // 将版本内容“快照”复制到问卷题目中，实现解耦
+      questionData = {
+        surveyId: survey._id,
+        templateId: req.body.templateId,
+        versionId: req.body.versionId,
+        order: req.body.order,
+        title: req.body.title,
+        type: version.type,
+        options: version.options,
+        selectLimit: version.selectLimit,
+        textLimit: version.textLimit,
+        numberLimit: version.numberLimit,
+        required: req.body.required || false
+      };
+    }
+
     const count = await Question.countDocuments({ surveyId: survey._id });
+    questionData.order = questionData.order || count + 1;
     
-    const q = await Question.create({
-      ...req.body,
-      surveyId: survey._id,
-      order: req.body.order != null ? req.body.order : count + 1,
-    });
+    const q = await Question.create(questionData);
     res.status(201).json(q);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-// 5. 发布问卷（重点：检查跳转循环）
 router.put('/:id/publish', async (req, res) => {
   const survey = await Survey.findById(req.params.id);
   if (!survey) return res.status(404).json({ error: '问卷不存在' });
-  if (survey.ownerId.toString() !== req.userId.toString()) {
-    return res.status(403).json({ error: '无权访问' });
-  }
+  if (survey.ownerId.toString() !== req.userId.toString()) return res.status(403).json({ error: '无权访问' });
 
   const questions = await Question.find({ surveyId: survey._id }).sort({ order: 1 });
-  if (questions.length === 0) {
-    return res.status(400).json({ error: '问卷必须至少包含一道题目才能发布' });
-  }
-  
-  // 调用跳转引擎，检查是否存在死循环跳转
-  if (hasCycle(questions)) {
-    return res.status(400).json({ error: '跳转规则存在循环，无法发布，请检查配置' });
-  }
+  if (questions.length === 0) return res.status(400).json({ error: '问卷必须包含题目' });
+  if (hasCycle(questions)) return res.status(400).json({ error: '跳转存在循环' });
 
   survey.status = 'published';
   await survey.save();
   res.json({ ok: true, slug: survey.slug, message: '发布成功' });
 });
 
-// 6. 关闭问卷
 router.put('/:id/close', async (req, res) => {
   const survey = await Survey.findById(req.params.id);
   if (!survey) return res.status(404).json({ error: '问卷不存在' });
-  if (survey.ownerId.toString() !== req.userId.toString()) {
-    return res.status(403).json({ error: '无权访问' });
-  }
+  if (survey.ownerId.toString() !== req.userId.toString()) return res.status(403).json({ error: '无权访问' });
   survey.status = 'closed';
   await survey.save();
-  res.json({ ok: true, message: '问卷已关闭' });
+  res.json({ ok: true, message: '关闭成功' });
 });
 
 module.exports = router;

@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const mongoose = require('mongoose'); // 需要用到 ObjectId
 const Survey = require('../models/Survey');
 const Question = require('../models/Question');
 const Response = require('../models/Response');
@@ -6,6 +7,7 @@ const requireAuth = require('../middleware/auth');
 
 router.use(requireAuth);
 
+// 查看单个问卷的统计（旧功能保留）
 router.get('/:id', async (req, res) => {
   const survey = await Survey.findById(req.params.id);
   if (!survey) return res.status(404).json({ error: '问卷不存在' });
@@ -19,6 +21,23 @@ router.get('/:id', async (req, res) => {
     result.questions.push(await statsForQuestion(survey._id, q));
   }
   res.json(result);
+});
+
+// 第二阶段新增：跨问卷统计某个题库模板
+router.get('/template/:templateId', async (req, res) => {
+  const templateId = new mongoose.Types.ObjectId(req.params.templateId);
+  
+  const stats = await Response.aggregate([
+    { $unwind: '$answers' },
+    { $match: { 'answers.templateId': templateId } },
+    { $group: { _id: '$answers.value', count: { $sum: 1 } } }
+  ]);
+  
+  res.json({ 
+    templateId, 
+    totalAnswers: stats.reduce((a, b) => a + b.count, 0), 
+    stats 
+  });
 });
 
 async function statsForQuestion(surveyId, question) {
@@ -35,7 +54,6 @@ async function statsForQuestion(surveyId, question) {
   }
 
   if (question.type === 'multiple') {
-    // 多选必须二次 unwind 才能准确统计每个选项被选次数
     const rows = await Response.aggregate([
       { $match: { surveyId } },
       { $unwind: { path: '$answers', preserveNullAndEmptyArrays: true } },
