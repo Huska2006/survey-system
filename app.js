@@ -9,14 +9,14 @@ const app = express();
 app.set('view engine', 'ejs');
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
-app.use('/', require('./routes/pages'));
 app.use(methodOverride('_method'));
 
-
+app.use('/', require('./routes/pages'));
 app.use('/auth', require('./routes/auth'));
 app.use('/surveys', require('./routes/surveys'));
 app.use('/fill', require('./routes/fill'));
 app.use('/stats', require('./routes/stats'));
+app.use('/library', require('./routes/library')); // 新增题库路由
 
 async function start() {
   await mongoose.connect(process.env.MONGO_URI);
