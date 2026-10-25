@@ -1,109 +1,75 @@
-# 2026 ECNU 软件工程大作业一（全阶段）- 基于 MongoDB 的问卷系统
+# 2026 ECNU 软件工程大作业一 - MongoDB 问卷系统 (第二阶段)
 
-本项目是一个基于 Node.js + Express + MongoDB + EJS 的在线问卷系统。经过两个阶段的迭代开发，系统不仅具备了基础的问卷创建、填写、跳转与统计功能，还成功扩展出了题目库、版本控制、团队共享、防篡改保护以及跨问卷聚合统计等高级特性。
+本项目是一个基于 Node.js + Express + MongoDB + EJS 的在线问卷系统。在第一阶段（基础问卷发布、填写、跳转、校验）的基础上，第二阶段根据用户需求变更，成功引入了题目题库、版本控制、团队共享以及跨问卷统计功能，并严格保证了旧数据与旧功能的兼容性。
 
-本项目严格遵循“不推倒重做”的原则，在第一阶段的架构上进行了平滑升级与数据结构解耦。
+## 第二阶段新增核心功能
 
-## 🛠️ 技术栈
-- 后端：Node.js, Express, Mongoose
-- 数据库：MongoDB
-- 前端：EJS 模板, 原生 HTML/JS (Fetch API)
-- 认证：JWT (JSON Web Token) + bcryptjs
-- 测试：Jest + Supertest
+1. 题目复用与题库管理：支持创建独立于问卷的题目，存入“我的题库”，做新问卷时可直接选用。
+2. 团队共享：题目可共享给其他注册用户，对方可在自己的题库和问卷中使用。
+3. 发布后数据保护：问卷一旦发布，拒绝任何题目修改操作，保证收集数据的一致性。
+4. 版本控制机制：基于题库题目创建新版本（v1 -> v2），新旧版本可同时存在，旧问卷依然引用旧版本快照。
+5. 跨问卷全局统计：基于题目模板 ID，聚合统计该题在所有问卷中的总体回答分布。
 
-## ✨ 核心功能说明
+## 技术栈
+- 后端：Node.js (v18+), Express, Mongoose, JWT 鉴权
+- 数据库：MongoDB (独立集合划分，拒绝单一集合冗余)
+- 前端：EJS 模板, 原生 HTML/Fetch API
+- 测试：Jest + Supertest (9个自动化测试用例，全量回归通过)
 
-### 第一阶段：基础问卷功能
-- 用户认证：注册、登录、基于 JWT 的权限隔离。
-- 问卷管理：创建问卷、发布、关闭，支持短链接（slug）分享。
-- 动态题型：单选、多选（支持数量限制）、文本（支持长度限制）、数字（支持范围与整数限制）。
-- 条件跳转：数据驱动的题目跳转（如选A跳至Q3），内置 Kahn 拓扑排序防止跳转死循环。
-- 答卷与统计：支持匿名/实名答卷，基于 MongoDB 聚合管道（$unwind, $group）自动统计选项分布与数字平均值。
+## 核心目录结构说明
 
-### 第二阶段：题库与版本控制（需求变更升级）
-- 题目库（Library）：题目被抽离为独立实体，可保存为模板，方便在多个问卷中重复使用。
-- 团队共享：用户可以将自己创建的题目共享给其他用户。
-- 版本历史（Versioning）：支持基于旧题创建新版本（v1 -> v2），并记录父子版本关系，随时可溯源。
-- 快照与防篡改：已发布的问卷直接锁定，无法修改题目。向问卷添加题库题目时，采用“内容快照”机制，原题库的修改绝不会影响已发布问卷的数据一致性。
-- 跨问卷统计：新增统计聚合逻辑，基于 templateId 可以跨越多份问卷，汇总同一道题的全局回答分布。
+survey-system/
+├── models/                 
+│   ├── User.js             # 用户模型
+│   ├── Survey.js           # 问卷模型
+│   ├── Question.js         # 问卷内的题目实例（含版本快照）
+│   ├── QuestionLibrary.js  # [新增] 题库本体模型
+│   ├── QuestionVersion.js  # [新增] 题库版本历史模型
+│   └── Response.js         # 答卷模型（新增 templateId 用于跨问卷统计）
+├── routes/
+│   ├── auth.js             # 登录注册
+│   ├── pages.js            # 页面渲染路由（/view 前缀）
+│   ├── surveys.js          # 问卷管理（含发布保护）
+│   ├── library.js          # [新增] 题库管理路由（创建/版本/共享）
+│   ├── fill.js             # 填写问卷与跳转逻辑
+│   └── stats.js            # 统计聚合（单问卷统计 + 跨问卷统计）
+├── services/
+│   ├── validationEngine.js # 校验引擎（数据驱动）
+│   └── jumpEngine.js       # 跳转引擎（拓扑排序防环）
+├── views/                  # EJS 前端页面
+├── tests/api.test.js       # 接口自动化测试用例
+├── app.js                  # 程序入口
+└── .env                    # 环境变量配置
 
-## 📁 目录结构
+## 数据库设计理念 (MongoDB 优势)
 
-    survey-system/
-    ├── models/                   # MongoDB 数据模型
-    │   ├── User.js
-    │   ├── Survey.js
-    │   ├── Question.js           # 问卷内的题目快照
-    │   ├── Response.js
-    │   ├── QuestionLibrary.js    # [新增] 题库本体
-    │   └── QuestionVersion.js    # [新增] 题库版本历史
-    ├── routes/                   # 路由控制器
-    │   ├── auth.js               # 认证接口
-    │   ├── surveys.js            # 问卷增删改查与发布
-    │   ├── fill.js               # 问卷填写与跳转引擎接入
-    │   ├── stats.js              # 单问卷与跨问卷统计
-    │   ├── library.js            # [新增] 题库管理与共享
-    │   └── pages.js              # 前端页面渲染
-    ├── services/                 # 核心业务引擎
-    │   ├── validationEngine.js   # 校验引擎（规则数据化）
-    │   └── jumpEngine.js         # 跳转引擎与环检测
-    ├── middleware/               # 鉴权中间件
-    ├── views/                    # EJS 前端页面
-    ├── tests/                    # 自动化测试
-    │   └── api.test.js           # 覆盖 9 大核心业务场景
-    ├── app.js                    # 应用入口
-    └── .env                      # 环境变量配置
+本系统未使用关系型数据库，原因如下：
+- 动态题型的天然契合：不同题型（单选、多选、文本、数字）的规则字段完全不同，MongoDB 的文档模型允许字段按需出现。
+- 数据解耦与快照设计：为了满足需求三（修改不影响旧问卷）和需求五（不同版本并存），第二阶段将题目拆分为 QuestionLibrary（本体）和 QuestionVersion（版本）。在向问卷添加题目时，系统将该版本的内容快照存入 Question 集合，实现了彻底解耦。
+- 高性能跨问卷统计：在答卷（Response）的答案数组中增加 templateId 字段。利用 MongoDB 的 $unwind 和 $match 聚合管道，可以瞬间完成基于索引的跨问卷统计，无需复杂的联表查询。
 
-## 🚀 快速启动指南
+## 启动指南
 
-### 1. 环境准备
-确保本地已安装 Node.js (v18+) 且 MongoDB 服务已启动（默认运行在 127.0.0.1:27017）。
+1. 确保本地 MongoDB 服务已启动（默认端口 27017）。
+2. 安装依赖：
+   npm install
+3. 配置环境变量（根目录新建 .env 文件）：
+   PORT=3000
+   MONGO_URI=mongodb://127.0.0.1:27017/survey_db
+   JWT_SECRET=your_secret_key
+4. 启动服务：
+   npm run dev
+5. 浏览器访问 http://localhost:3000/login
 
-### 2. 安装依赖
-    npm install
+## 测试说明
 
-### 3. 配置环境变量
-在项目根目录创建 .env 文件，填入以下内容：
+运行测试前请确保本地 MongoDB 正在运行。
+npm test
+测试包含第一阶段的 5 个基础回归用例，以及第二阶段的 4 个新功能用例（题库共享、版本控制、发布拦截、跨问卷统计），共 9 个测试全部通过。
 
-    PORT=3000
-    MONGO_URI=mongodb://127.0.0.1:27017/survey_db
-    JWT_SECRET=your_super_secret_key_123456
-
-### 4. 启动服务
-    npm run dev
-
-启动后，浏览器访问 http://localhost:3000/login 即可进入系统。
-
-## 🧪 自动化测试
-本项目包含完善的接口级自动化测试用例（含第一阶段回归测试 + 第二阶段新功能测试）。
-在运行测试前，请确保本地 MongoDB 处于运行状态。测试将自动连接 survey_test_db 并在结束后清空数据。
-
-    npm test
-
-预期结果：9 个测试用例（T1, T3, T4, T5, T6+T7, T8, T9, T10, T11）全部 PASS。
-
-## 🔌 核心 API 说明
-
-### 认证 (Auth)
-- POST /auth/register：用户注册
-- POST /auth/login：用户登录获取 Token
-
-### 问卷管理 (Surveys)
-- POST /surveys：创建新问卷
-- GET /surveys：获取本人问卷列表
-- POST /surveys/:id/questions：向未发布问卷添加题目（支持直接新建或从题库拉取快照）
-- PUT /surveys/:id/publish：发布问卷（触发防篡改锁定与环检测）
-
-### 题库管理 (Library)
-- POST /library：创建新题目存入题库（v1）
-- POST /library/:id/versions：基于原题派生新版本（v2, v3...）
-- GET /library/:id/history：查看题目的历史版本树
-- PUT /library/:id/share：将题目共享给其他用户
-- GET /library：获取自己可用的题目列表（自己建的 + 别人共享的）
-
-### 填写与统计 (Fill & Stats)
-- GET /fill/:slug：获取问卷首题
-- POST /fill/:slug/next：提交单题并触发后端校验与跳转计算
-- POST /fill/:slug/submit：提交整份答卷
-- GET /stats/:id：获取单份问卷的统计结果
-- GET /stats/template/:templateId：跨问卷统计某个题库模板的全局数据
+## 第二阶段新增 API 概览
+- POST /library：将新题目存入题库
+- POST /library/:id/versions：基于旧版本创建新版本
+- GET /library：获取自己创建及被共享的题库列表
+- PUT /library/:id/share：共享题目给他人
+- GET /stats/template/:templateId：跨问卷统计单个题目的数据
